@@ -112,18 +112,24 @@ def speak_with_xtts(tts, text, language="zh"):
         # 生成語音 (多重方法嘗試)
         success = False
         
-        # 方法1：使用中文適配的說話者
-        chinese_speakers = ["Claribel Dervla", "Daisy Studious", "Gracie Wise"]
-        for speaker in chinese_speakers:
+        # 方法1：使用年輕女性說話者（按優先順序排列）
+        young_female_speakers = [
+            "Tammie Ema",          # 年輕女性，活潑語調
+            "Daisy Studious",      # 年輕女性，學術風格
+            "Gracie Wise",         # 年輕女性，溫和語調
+            "Alison Dietlinde",    # 年輕女性，專業播音
+            "Claribel Dervla"      # 年輕女性，清晰發音
+        ]
+        for speaker in young_female_speakers:
             try:
-                print(f"   嘗試說話者: {speaker}")
+                print(f"   嘗試年輕女性說話者: {speaker}")
                 tts.tts_to_file(
                     text=text,
                     file_path=output_path,
                     language=language,
                     speaker=speaker
                 )
-                print(f"✅ 使用說話者 {speaker} 成功")
+                print(f"✅ 使用年輕女性說話者 {speaker} 成功")
                 success = True
                 break
             except Exception as e1:
@@ -162,19 +168,19 @@ def speak_with_xtts(tts, text, language="zh"):
             except Exception as e3:
                 print(f"   直接合成失敗: {e3}")
         
-        # 方法4：最後嘗試無語言參數
+        # 方法4：最後嘗試使用年輕女性聲音
         if not success:
             try:
-                print("   嘗試簡化參數...")
+                print("   嘗試預設年輕女性聲音...")
                 tts.tts_to_file(
                     text=text,
                     file_path=output_path,
-                    speaker="Claribel Dervla"
+                    speaker="Tammie Ema"  # 年輕女性，活潑語調
                 )
-                print("✅ 簡化參數成功")
+                print("✅ 預設年輕女性聲音成功")
                 success = True
             except Exception as e4:
-                print(f"   簡化參數失敗: {e4}")
+                print(f"   預設年輕女性聲音失敗: {e4}")
                 raise Exception("所有語音合成方法都失敗了")
         
         print("🎵 正在播放 XTTS v2 生成的語音...")
