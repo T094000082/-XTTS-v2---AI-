@@ -54,6 +54,9 @@ try:
 except (FileNotFoundError, subprocess.CalledProcessError):
     FFMPEG_AVAILABLE = False
 
+# XTTS v2 模型緩存（全局變量，避免重複載入）
+_XTTS_MODEL_CACHE = None
+
 class EnhancedTTSReader:
     def __init__(self):
         """初始化增強版TTS讀稿機"""
@@ -119,16 +122,44 @@ class EnhancedTTSReader:
     
     def _init_xtts(self):
         """初始化XTTS v2引擎"""
+        global _XTTS_MODEL_CACHE
+        
         print("🔧 正在初始化 XTTS v2 引擎...")
-        print("   (首次使用會下載模型，請稍候...)")
+        
+        # 如果已經有緩存的模型，直接使用
+        if _XTTS_MODEL_CACHE is not None:
+            print("   ⚡ 使用已載入的模型緩存，瞬間完成！")
+            self.xtts_model = _XTTS_MODEL_CACHE
+            self.engine_type = 'xtts'
+            return
+        
+        # 檢查模型是否已經下載到本地
+        import os
+        from pathlib import Path
+        
+        # 獲取用戶目錄下的模型緩存路徑
+        home_dir = Path.home()
+        cache_dir = home_dir / ".cache" / "tts"
+        model_path = cache_dir / "tts_models--multilingual--multi-dataset--xtts_v2"
+        
+        if model_path.exists():
+            print("   ✅ 發現本地緩存模型，快速載入中...")
+        else:
+            print("   📥 首次使用，正在下載模型（約1.8GB），請稍候...")
+            print("   💡 模型將緩存到本地，之後使用會更快！")
         
         # 初始化pygame用於播放
         import pygame
         pygame.mixer.init()
         
-        # 創建XTTS模型
+        # 創建XTTS模型（會自動使用緩存）
         self.xtts_model = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to("cpu")
+        
+        # 將模型保存到全局緩存
+        _XTTS_MODEL_CACHE = self.xtts_model
+        
         self.engine_type = 'xtts'
+        print("   ✅ XTTS v2 引擎載入完成！模型已緩存，下次使用更快！")
     
     def read_txt_file(self, file_path):
         """讀取TXT文件內容"""
@@ -289,14 +320,39 @@ class EnhancedTTSReader:
     
     def get_engine_info(self):
         """獲取當前引擎資訊"""
+        global _XTTS_MODEL_CACHE
+        
         if self.engine_type == 'pyttsx3':
             return "pyttsx3 - 跨平台文字轉語音引擎"
         elif self.engine_type == 'win32':
             return "Windows SAPI - 系統內建語音合成"
         elif self.engine_type == 'xtts':
-            return "XTTS v2 - 高品質AI語音合成"
+            cache_status = "（已緩存）" if _XTTS_MODEL_CACHE is not None else "（首次載入）"
+            return f"XTTS v2 - 高品質AI語音合成 {cache_status}"
         else:
             return "無引擎"
+    
+    def get_model_cache_info(self):
+        """獲取模型緩存資訊"""
+        global _XTTS_MODEL_CACHE
+        from pathlib import Path
+        
+        info = {
+            'memory_cached': _XTTS_MODEL_CACHE is not None,
+            'disk_cached': False,
+            'cache_path': None
+        }
+        
+        # 檢查磁盤緩存
+        home_dir = Path.home()
+        cache_dir = home_dir / ".cache" / "tts"
+        model_path = cache_dir / "tts_models--multilingual--multi-dataset--xtts_v2"
+        
+        if model_path.exists():
+            info['disk_cached'] = True
+            info['cache_path'] = str(model_path)
+        
+        return info
 
 class TTSGui:
     def __init__(self):
@@ -371,6 +427,7 @@ class TTSGui:
         ttk.Button(control_frame, text="初始化引擎", command=self.init_engine).grid(row=0, column=0, padx=5)
         ttk.Button(control_frame, text="開始朗讀", command=self.start_reading).grid(row=0, column=1, padx=5)
         ttk.Button(control_frame, text="測試引擎", command=self.test_engine).grid(row=0, column=2, padx=5)
+        ttk.Button(control_frame, text="緩存狀態", command=self.show_cache_status).grid(row=0, column=3, padx=5)
         
         # 狀態欄
         self.status_label = ttk.Label(main_frame, text="就緒 - 請選擇TXT檔案", foreground="blue")
@@ -486,6 +543,30 @@ class TTSGui:
         except Exception as e:
             self.status_label.config(text=f"測試出錯: {str(e)}", foreground="red")
     
+    def show_cache_status(self):
+        """顯示模型緩存狀態"""
+        cache_info = self.reader.get_model_cache_info()
+        
+        status_text = "📋 XTTS v2 模型緩存狀態:\n\n"
+        
+        if cache_info['memory_cached']:
+            status_text += "🟢 記憶體緩存: 已載入（下次初始化會很快）\n"
+        else:
+            status_text += "🔴 記憶體緩存: 未載入\n"
+            
+        if cache_info['disk_cached']:
+            status_text += "🟢 磁盤緩存: 已下載（無需重新下載）\n"
+            status_text += f"📁 緩存路徑: {cache_info['cache_path']}\n"
+        else:
+            status_text += "🔴 磁盤緩存: 未下載（首次使用需下載約1.8GB）\n"
+        
+        status_text += "\n💡 提示:\n"
+        status_text += "• 首次使用會下載模型到磁盤緩存\n"
+        status_text += "• 之後每次程式啟動只需載入到記憶體\n"
+        status_text += "• 同一程式執行期間，多次初始化會使用記憶體緩存"
+        
+        messagebox.showinfo("模型緩存狀態", status_text)
+    
     def run(self):
         """運行GUI"""
         self.root.mainloop()
@@ -528,6 +609,24 @@ def main():
             status = "✅ 可用" if available else "❌ 不可用"
             print(f"  {engine}: {status}")
         print(f"📁 FFmpeg (MP3支援): {'✅ 可用' if FFMPEG_AVAILABLE else '❌ 不可用'}")
+        
+        # 顯示XTTS v2緩存狀態
+        if ENGINES.get('xtts', False):
+            print("\n📋 XTTS v2 模型緩存狀態:")
+            reader = EnhancedTTSReader()
+            cache_info = reader.get_model_cache_info()
+            
+            memory_status = "✅ 已載入" if cache_info['memory_cached'] else "❌ 未載入"
+            disk_status = "✅ 已下載" if cache_info['disk_cached'] else "❌ 未下載"
+            
+            print(f"  記憶體緩存: {memory_status}")
+            print(f"  磁盤緩存: {disk_status}")
+            
+            if cache_info['disk_cached']:
+                print(f"  緩存路徑: {cache_info['cache_path']}")
+            else:
+                print("  💡 首次使用XTTS v2會下載約1.8GB模型")
+        
         return 0
     
     # 命令行模式
